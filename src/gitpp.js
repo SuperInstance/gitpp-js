@@ -8,6 +8,8 @@ const subtle = webcrypto.subtle;
 // ---------- §3 leaf-number encoding (one canonical form, all ports) ----------
 
 function leafNumber(v) {
+  // Returns a NUMBER (or null/boolean) for canonical JSON encoding.
+  // The emitValue function is responsible for formatting per spec §3.
   if (typeof v === "boolean") return v;
   if (typeof v === "number") {
     if (!Number.isFinite(v)) {
@@ -22,6 +24,34 @@ function leafNumber(v) {
     return v;
   }
   return v;
+}
+
+// Format a number per spec §3: scientific when |v| < 1e-4 or |v| >= 1e17,
+// or when v is an integer with >= 17 digits.
+function numFormat(v) {
+  if (v === 0) return "0";
+  if (Number.isInteger(v) && Math.abs(v) < 1e21) {
+    // Integer-valued float: emit as integer (Python's repr(1) = "1", not "1.0")
+    // This is what Python does: json.loads("1") -> int 1, then repr -> "1"
+    return String(v);  // 1 -> "1", 1e16 -> "10000000000000000"
+  }
+  const abs = Math.abs(v);
+  if (abs < 1e-4 || abs >= 1e17) return sciFormat(v);
+  return v.toString();  // 1.5 -> "1.5", 0.5 -> "0.5"
+}
+
+function sciFormat(v) {
+  let s = v.toExponential();
+  // Strip trailing zeros from mantissa
+  s = s.replace(/(\.\d*?)0+e/, "$1e").replace(/\.e/, "e");
+  const m = s.match(/^([^e]+)e([+-]?\d+)$/i);
+  if (m) {
+    const exp = parseInt(m[2]);
+    const expStr = String(Math.abs(exp)).padStart(2, "0");
+    if (exp < 0) return m[1] + "e-" + expStr;
+    return m[1] + "e+" + expStr;
+  }
+  return s;
 }
 
 function leafEncodeEffects(effects) {
@@ -70,7 +100,7 @@ async function sha256Hex(bytes) {
 function emitValue(v) {
   if (v === null) return "null";
   if (typeof v === "boolean") return v ? "true" : "false";
-  if (typeof v === "number") return v.toString();
+  if (typeof v === "number") return numFormat(v);
   if (typeof v === "string") return JSON.stringify(v);
   if (Array.isArray(v)) {
     if (v.length === 0) return "[]";

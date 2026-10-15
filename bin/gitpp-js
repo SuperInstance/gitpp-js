@@ -1,0 +1,69 @@
+#!/usr/bin/env node
+// gitpp-js CLI: read a JSON record array from a file, optionally at
+// a record id, and print the fold output as JSON.
+//
+// Usage: gitpp-js <file> [--at <id>]
+//
+// File format: a JSON array of records. Each record has {id, parents, 
+// kind, effects, reason} fields.
+//
+// Example:
+//   gitpp-js records.json --at task-c
+
+import { readFileSync } from "node:fs";
+import { derive, recordLeaf, closureRoot } from "../src/gitpp.js";
+
+const args = process.argv.slice(2);
+let file, at;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--at") at = args[++i];
+  else if (!file) file = args[i];
+}
+
+const records = JSON.parse(readFileSync(file, "utf8"));
+
+if (at) {
+  // Full fold with closure at <at>
+  const d = derive(records);
+  const root = await closureRoot(records, at);
+  let closure = null;
+  if (root !== null) {
+    const byId = new Map();
+    for (const x of records) if (x.id) byId.set(x.id, x);
+    if (byId.has(at)) {
+      const seen = new Set();
+      const stack = [at];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (seen.has(cur)) continue;
+        if (!byId.has(cur)) break;
+        seen.add(cur);
+        for (const p of (byId.get(cur).parents || [])) {
+          if (!seen.has(p)) stack.push(p);
+        }
+      }
+      // Sort by codepoint
+      closure = [...seen].sort((a, b) => {
+        const ca = [...a].map(c => c.codePointAt(0));
+        const cb = [...b].map(c => c.codePointAt(0));
+        const n = Math.max(ca.length, cb.length);
+        for (let i = 0; i < n; i++) {
+          if ((ca[i] || 0) !== (cb[i] || 0)) return (ca[i] || 0) - (cb[i] || 0);
+        }
+        return 0;
+      });
+    }
+  }
+  console.log(JSON.stringify({
+    state: d.state,
+    order: d.order,
+    conflicts: d.conflicts,
+    orphans: d.orphans,
+    closure: closure,
+    closureRoot: root,
+  }, null, 2));
+} else {
+  // Just the derive output
+  const d = derive(records);
+  console.log(JSON.stringify(d, null, 2));
+}
