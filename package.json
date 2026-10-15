@@ -1,0 +1,18 @@
+{
+  "name": "gitpp",
+  "version": "0.1.0",
+  "description": "A browser-portable JavaScript port of the git.pp fold. Pure ESM, no build step, no transpilation, no dependencies. The 4th port in the doc-only-discipline series.",
+  "type": "module",
+  "main": "./src/gitpp.js",
+  "module": "./src/gitpp.js",
+  "exports": {
+    ".": "./src/gitpp.js"
+  },
+  "scripts": {
+    "test": "node --test test/quick.test.js test/live.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
