@@ -1,7 +1,7 @@
 {
   "name": "gitpp",
-  "version": "0.1.0",
-  "description": "A browser-portable JavaScript port of the git.pp fold. Pure ESM, no build step, no transpilation, no dependencies. The 4th port in the doc-only-discipline series.",
+  "version": "0.1.5",
+  "description": "A browser-portable JavaScript port of the git.pp fold. Pure ESM, no build step, no transpilation, no dependencies. Returns setters (spec \u00a75.6) so nudges can be authored against the record that actually holds a key. 4th port in the doc-only-discipline series.",
   "type": "module",
   "main": "./src/gitpp.js",
   "module": "./src/gitpp.js",
@@ -14,5 +14,28 @@
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "git.pp",
+    "quilt",
+    "fold",
+    "append-only",
+    "provenance",
+    "records",
+    "git"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuperInstance/gitpp-js.git"
+  },
+  "homepage": "https://github.com/SuperInstance/gitpp-js",
+  "bugs": {
+    "url": "https://github.com/SuperInstance/gitpp-js/issues"
+  },
+  "author": "SuperInstance",
+  "files": [
+    "src/",
+    "bin/",
+    "README.md"
+  ]
 }
