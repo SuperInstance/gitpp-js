@@ -343,7 +343,13 @@ export function derive(records) {
     state,
     order,
     conflicts,
-    orphans: sortByCodePoint([...orphans].filter(x => typeof x === "string")),
+    // Cycle-affected records are excluded from the fold (above) AND must be
+    // preserved in the output per spec §5.5. Previously `cycles` was computed
+    // and used to exclude records from `applied`, but never surfaced here, so
+    // a 2-cycle silently vanished from the result. (gitpp-js v0.1.4)
+    orphans: sortByCodePoint(
+      [...new Set([...orphans, ...cycles])].filter(x => typeof x === "string")
+    ),
   };
 }
 
