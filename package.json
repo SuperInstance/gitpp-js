@@ -1,6 +1,6 @@
 {
   "name": "gitpp-fold",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A browser-portable JavaScript port of the git.pp fold. Pure ESM, no build step, no transpilation, no dependencies. Returns setters (spec \u00a75.6) so nudges can be authored against the record that actually holds a key. 4th port in the doc-only-discipline series. Published unscoped because the npm account is not configured for scoped packages.",
   "type": "module",
   "main": "./src/gitpp.js",
