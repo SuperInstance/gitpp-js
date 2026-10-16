@@ -351,13 +351,17 @@ export async function verifyCheckpoint(records, checkpoint) {
   const { at, state: expectedState, closureRoot: expectedRoot } = checkpoint;
   const liveRoot = await closureRoot(records, at);
   const liveState = derive(records).state;
-  if (liveRoot === expectedRoot) {
+  // Check state FIRST. If state differs, it\'s MISMATCH regardless of root.
+  // The root can be a stale pinned value that happens to match a different state.
+  const stateMatches = JSON.stringify(liveState) === JSON.stringify(expectedState || {});
+  const rootMatches = !expectedRoot || liveRoot === expectedRoot;
+  if (stateMatches && rootMatches) {
     return { verdict: "VERIFIED", closureRoot: liveRoot, state: liveState };
   }
-  const stateMatches = JSON.stringify(liveState) === JSON.stringify(expectedState);
-  if (stateMatches) {
+  if (stateMatches && !rootMatches) {
     return { verdict: "STATE-ONLY", closureRoot: liveRoot, expectedRoot, state: liveState };
   }
+  // State differs: MISMATCH with diff
   const onlyInLive = {};
   const onlyInExpected = {};
   for (const k of new Set([...Object.keys(liveState), ...Object.keys(expectedState || {})])) {
