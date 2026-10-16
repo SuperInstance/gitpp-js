@@ -17,9 +17,10 @@ function leafNumber(v) {
     }
     if (Object.is(v, -0)) return 0;
     if (v === 0) return 0;
-    if (Number.isInteger(v) && Math.abs(v) < 1e21) return v;
+    if (Number.isInteger(v) && Math.abs(v) < 1e16) return v;
     if (Number.isInteger(v)) {
-      throw new Error("integer " + v + " >= 1e21 in record effects (out of pinned domain)");
+      // Allow large integers through to numFormat, which will use scientific.
+      return v;
     }
     return v;
   }
@@ -30,14 +31,14 @@ function leafNumber(v) {
 // or when v is an integer with >= 17 digits.
 function numFormat(v) {
   if (v === 0) return "0";
-  if (Number.isInteger(v) && Math.abs(v) < 1e21) {
-    // Integer-valued float: emit as integer (Python's repr(1) = "1", not "1.0")
-    // This is what Python does: json.loads("1") -> int 1, then repr -> "1"
-    return String(v);  // 1 -> "1", 1e16 -> "10000000000000000"
+  // Integer form requires |v| < 1e16 to fit safely in int64 across all 5
+  // ports. Larger integer-valued floats fall back to scientific notation.
+  if (Number.isInteger(v) && Math.abs(v) < 1e16) {
+    return String(v);
   }
   const abs = Math.abs(v);
-  if (abs < 1e-4 || abs >= 1e17) return sciFormat(v);
-  return v.toString();  // 1.5 -> "1.5", 0.5 -> "0.5"
+  if (abs < 1e-4 || abs >= 1e16) return sciFormat(v);
+  return v.toString();
 }
 
 function sciFormat(v) {
