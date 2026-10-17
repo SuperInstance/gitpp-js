@@ -9,7 +9,7 @@
     ".": "./src/gitpp.js"
   },
   "scripts": {
-    "test": "node --test test/quick.test.js test/live.test.js"
+    "test": "node --test test/quick.test.js test/live.test.js test/v046.test.js"
   },
   "engines": {
     "node": ">=20"
