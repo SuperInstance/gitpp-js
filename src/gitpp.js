@@ -166,55 +166,54 @@ export async function closureRoot(records, at) {
 
 const CLASS_RANK = { override: 3, task: 2, witness: 1 };
 
+// Spec §5.5 — "cycle-affected records are orphans for output purposes".
+//
+// This needs THREE clauses, not one. The two obvious single-clause rules each
+// get a different case wrong:
+//
+//   rule A: a parent id is missing from the record set. Correct for a
+//           missing-parent record, but blind to cycles entirely — a cycle
+//           member's parents all exist, so records downstream of the cycle
+//           sail through and reach state.
+//   rule B: anything Kahn never emitted. Correct for cycles, but it also
+//           swallows the descendants of a MISSING parent, which are perfectly
+//           orderable. (That trade-off is gitpp-rr-reader3#1.)
+//
+// Clause 3 is what separates the two cases no single rule can: a cycle
+// DESCENDANT's parent exists but is unorderable, while a missing-parent
+// DESCENDANT's parent does not exist at all.
 function detectOrphans(records) {
   const byId = new Map();
   for (const r of records) {
     if (r.id) byId.set(r.id, r);
   }
+  // Kahn over the FULL record set, with in-degree counting only parents THAT
+  // EXIST. An absent parent cannot block a record — there is nothing to wait
+  // for — which is exactly why a missing-parent record and its descendants
+  // stay orderable and must NOT be orphaned.
+  const orderable = new Set(topoOrder(records));
+
   const orphans = new Set();
-  for (const r of records) {
-    if (!r.id) continue;
-    for (const p of r.parents || []) {
-      if (!byId.has(p)) {
-        orphans.add(r.id);
-        break;
-      }
+  for (const [rid, r] of byId) {
+    const ps = r.parents || [];
+    // 1. missing parent
+    if (ps.some(p => !byId.has(p))) {
+      orphans.add(rid);
+      continue;
+    }
+    // 2. cycle member — can never be topologically ordered
+    if (!orderable.has(rid)) {
+      orphans.add(rid);
+      continue;
+    }
+    // 3. cycle descendant — an existing parent that is itself unorderable.
+    // The byId.has(p) guard is the whole point: it keeps clause 1 (parent
+    // absent) and clause 3 (parent present but stuck) from bleeding together.
+    if (ps.some(p => byId.has(p) && !orderable.has(p))) {
+      orphans.add(rid);
     }
   }
   return orphans;
-}
-
-function detectCycles(records) {
-  const WHITE = 0, GRAY = 1, BLACK = 2;
-  const color = new Map();
-  for (const r of records) if (r.id) color.set(r.id, WHITE);
-  const cycle = new Set();
-  const path = [];
-
-  function dfs(rid) {
-    const c = color.get(rid);
-    if (c === GRAY) {
-      const idx = path.indexOf(rid);
-      for (let i = idx; i < path.length; i++) cycle.add(path[i]);
-      return;
-    }
-    if (c === BLACK) return;
-    color.set(rid, GRAY);
-    path.push(rid);
-    const r = records.find(r => r.id === rid);
-    if (r) {
-      for (const p of r.parents || []) {
-        if (color.has(p)) dfs(p);
-      }
-    }
-    path.pop();
-    color.set(rid, BLACK);
-  }
-
-  for (const r of records) {
-    if (r.id && color.get(r.id) === WHITE) dfs(r.id);
-  }
-  return cycle;
 }
 
 function ancestorsOf(rid, applied) {
@@ -271,16 +270,12 @@ export function derive(records) {
     if (r.id) byId.set(r.id, r);
   }
   const orphans = detectOrphans(records);
-  const cycles = detectCycles(records);
 
   const applied = new Map();
   for (const [rid, r] of byId) {
-    if (!orphans.has(rid) && !cycles.has(rid)) {
+    if (!orphans.has(rid)) {
       applied.set(rid, r);
     }
-  }
-  for (const r of records) {
-    if (r.id && orphans.has(r.id)) applied.delete(r.id);
   }
 
   const order = topoOrder([...applied.values()]);
@@ -379,13 +374,11 @@ export function derive(records) {
     setters,
     order,
     conflicts,
-    // Cycle-affected records are excluded from the fold (above) AND must be
-    // preserved in the output per spec §5.5. Previously `cycles` was computed
-    // and used to exclude records from `applied`, but never surfaced here, so
-    // a 2-cycle silently vanished from the result. (gitpp-js v0.1.4)
-    orphans: sortByCodePoint(
-      [...new Set([...orphans, ...cycles])].filter(x => typeof x === "string")
-    ),
+    // §5.5: cycle-affected records — cycle members AND everything downstream
+    // of them — are excluded from the fold (above) and must still be reported
+    // here. A 2-cycle vanishing from this list was the v0.1.4 bug; cycle
+    // descendants leaking into `state` is the same bug one hop further out.
+    orphans: sortByCodePoint([...orphans].filter(x => typeof x === "string")),
   };
 }
 
