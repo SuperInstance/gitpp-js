@@ -329,11 +329,24 @@ export function derive(records) {
     state[K] = winnerValue;
     const distinctValues = new Set(candidates.map(r => JSON.stringify(r.effects[K])));
     if (distinctValues.size > 1) {
-      const losers = sortByCodePoint(
-        candidates
-          .filter(r => r.id !== winner.id && JSON.stringify(r.effects[K]) !== JSON.stringify(winnerValue))
-          .map(r => r.id)
-      );
+      // SPEC 5.2 (v0.4.6): the losers are listed in the 5.4 order
+      // sequence, not sorted by codepoint and not in discovery order.
+      //
+      // The spec fixes the MEMBERSHIP of the loser set ("every record that
+      // tried to set K with a value other than the winner's") and says
+      // "N-1 losers" -- set language -- without ever saying what order
+      // the set is written in. Three ports emitted three different
+      // serialisations of the same fold, so a consumer that hashes or
+      // diffs a ledger got different bytes for identical semantics.
+      //
+      // Minimal witness: m(override,x=2), z(witness,x=3),
+      // a(override,x=1,parents:[z]) -> order [m,z,a], winner m, losers
+      // z and a. Order sequence gives [z,a]; codepoint gives [a,z].
+      const topoIndex = new Map(order.map((id, i) => [id, i]));
+      const losers = candidates
+        .filter(r => r.id !== winner.id && JSON.stringify(r.effects[K]) !== JSON.stringify(winnerValue))
+        .map(r => r.id)
+        .sort((a, b) => (topoIndex.get(a) ?? 0) - (topoIndex.get(b) ?? 0));
       if (losers.length > 0) {
         conflicts.push({ key: K, winner: winner.id, losers });
       }
