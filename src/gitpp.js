@@ -303,32 +303,46 @@ export function derive(records) {
       return true;
     });
     if (survivors.length > 1) {
-      survivors.sort((a, b) => {
-        const aIntent = [...anc.get(a.id)].filter(x => {
-          const r = applied.get(x);
-          return r && (r.kind === "task" || r.kind === "override");
-        }).length;
-        const bIntent = [...anc.get(b.id)].filter(x => {
-          const r = applied.get(x);
-          return r && (r.kind === "task" || r.kind === "override");
-        }).length;
-        if (aIntent !== bIntent) return bIntent - aIntent;
-        const aWitness = [...anc.get(a.id)].filter(x => applied.get(x)?.kind === "witness").length;
-        const bWitness = [...anc.get(b.id)].filter(x => applied.get(x)?.kind === "witness").length;
-        if (aWitness !== bWitness) return aWitness - bWitness;
-        return codePointCompare(a.id, b.id);
-      });
+      // SPEC 5.2 / 5.4: among equal-class survivors that are mutually
+      // incomparable in ancestry, the FIRST IN TOPO ORDER wins.
+      //
+      // This replaces a three-tier heuristic (most task/override ancestors,
+      // then fewest witness ancestors, then codepoint) that was not in the
+      // spec and contradicted it. Both halves pointed the wrong way on a
+      // real input: given a(task, parent c) and b(task, root) -- same class,
+      // mutually incomparable -- 'a' has one intent ancestor and 'b' has
+      // none, so the heuristic preferred a; and with all tiers tied its
+      // codepoint fallback still preferred 'a' over 'b', which is the
+      // OPPOSITE of topo order, where b comes first.
+      //
+      // Single Kahn-tier candidates make this invisible: first-in-tier and
+      // smallest-codepoint coincide, so the old comparator appeared correct.
+      const topoIndex = new Map(order.map((id, i) => [id, i]));
+      survivors.sort((a, b) => topoIndex.get(a.id) - topoIndex.get(b.id));
     }
     const winner = survivors[0];
     const winnerValue = winner.effects[K];
     state[K] = winnerValue;
     const distinctValues = new Set(candidates.map(r => JSON.stringify(r.effects[K])));
     if (distinctValues.size > 1) {
-      const losers = sortByCodePoint(
-        candidates
-          .filter(r => r.id !== winner.id && JSON.stringify(r.effects[K]) !== JSON.stringify(winnerValue))
-          .map(r => r.id)
-      );
+      // SPEC 5.2 (v0.4.6): the losers are listed in the 5.4 order
+      // sequence, not sorted by codepoint and not in discovery order.
+      //
+      // The spec fixes the MEMBERSHIP of the loser set ("every record that
+      // tried to set K with a value other than the winner's") and says
+      // "N-1 losers" -- set language -- without ever saying what order
+      // the set is written in. Three ports emitted three different
+      // serialisations of the same fold, so a consumer that hashes or
+      // diffs a ledger got different bytes for identical semantics.
+      //
+      // Minimal witness: m(override,x=2), z(witness,x=3),
+      // a(override,x=1,parents:[z]) -> order [m,z,a], winner m, losers
+      // z and a. Order sequence gives [z,a]; codepoint gives [a,z].
+      const topoIndex = new Map(order.map((id, i) => [id, i]));
+      const losers = candidates
+        .filter(r => r.id !== winner.id && JSON.stringify(r.effects[K]) !== JSON.stringify(winnerValue))
+        .map(r => r.id)
+        .sort((a, b) => (topoIndex.get(a) ?? 0) - (topoIndex.get(b) ?? 0));
       if (losers.length > 0) {
         conflicts.push({ key: K, winner: winner.id, losers });
       }
@@ -356,13 +370,12 @@ export function derive(records) {
       const surv = same.filter((r) => !same.some((o) => o.id !== r.id && anc.get(o.id).has(r.id)));
       let w = surv[0];
       if (surv.length > 1) {
-        const aIntent = (x) => [...anc.get(x)].filter((y) => applied.get(y) && (CLASS_RANK[applied.get(y).kind] || 0) >= 2).length;
-        const aWitness = (x) => [...anc.get(x)].filter((y) => applied.get(y) && CLASS_RANK[applied.get(y).kind] === 1).length;
-        w = [...surv].sort((a, b) => {
-          const d = aIntent(b.id) - aIntent(a.id); if (d) return d;
-          const e = aWitness(a.id) - aWitness(b.id); if (e) return e;
-          return sortByCodePoint([a.id, b.id])[0] === a.id ? -1 : 1;
-        })[0];
+        // Same rule as the state block above, and it MUST stay identical:
+        // this block re-derives the winner to fill setters, so fixing only
+        // the state comparator would leave setters[K] disagreeing with
+        // state[K] for exactly the records this bug affects.
+        const topoIndex = new Map(order.map((id, i) => [id, i]));
+        w = [...surv].sort((a, b) => topoIndex.get(a.id) - topoIndex.get(b.id))[0];
       }
       winnerOf.set(K, w.id);
     }
